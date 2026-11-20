@@ -1,4 +1,5 @@
 import asyncio
+
 import aiohttp
 from aiologger import Logger
 
@@ -21,11 +22,12 @@ async def fetch_post(session: aiohttp.ClientSession, post_id: int, semaphore: as
         logger.info(f"Пост {post_id} успешно загружен")
         return post
 
-async def fetch_all_posts(logger: Logger, timeout=10) -> list[dict]:
+
+async def fetch_all_posts(logger: Logger, posts_amount: int, timeout=10) -> list[dict]:
     semaphore = asyncio.Semaphore(5)
 
     tasks = []
-    post_ids = list(range(1, 101))
+    post_ids = list(range(1, posts_amount + 1))
 
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
         for post_id in post_ids:
