@@ -1,25 +1,23 @@
 import asyncio
+from logging import Logger, INFO, ERROR
 
 import aiohttp
-from aiologger import Logger
 
 API_URL = "https://jsonplaceholder.typicode.com/posts/{post_id}"
 
 
+async def log(logger: Logger, message: str, level: int = INFO) -> None:
+    logger.log(level, message)
+
+
 async def fetch_post(session: aiohttp.ClientSession, post_id: int, semaphore: asyncio.Semaphore, logger: Logger) -> dict:
-    """
-    Все же решил использовать logger.info без await, поскольку такой вызов несет тот же функционал вызова
-    фоновой функции логирования, как и с asyncio.create_task, а обернуть asyncio.create_task(logger.info())
-    нельзя, потому что logger.info() возвращает Task, а не Coroutine
-    Вариант использования я асинхронного логгера здесь мне кажется уместнее
-    """
     async with semaphore:
-        logger.info(f"Начало загрузки поста {post_id}...")
+        asyncio.create_task(log(logger, f"Начало загрузки поста {post_id}..."))
         async with session.get(f"https://jsonplaceholder.typicode.com/posts/{post_id}") as response:
             response.raise_for_status()
             post = await response.json()
 
-        logger.info(f"Пост {post_id} успешно загружен")
+        asyncio.create_task(log(logger, f"Пост {post_id} успешно загружен"))
         return post
 
 
@@ -38,12 +36,9 @@ async def fetch_all_posts(logger: Logger, posts_amount: int, timeout=10) -> list
 
         for post_id, result in zip(post_ids, results):
             if isinstance(result, BaseException):
-                logger.error(
-                     f"Пост {post_id} не удалось загрузить: "
-                     f"{type(result).__name__}: {result}"
-                )
+                asyncio.create_task(log(logger, f"Пост {post_id} не удалось загрузить: "
+                                                f"{type(result).__name__}: {result}", ERROR))
             else:
                 successful_results.append(result)
 
-    await logger.shutdown() # гарантируем, что все фоновые записи в лог завершаться
     return successful_results
