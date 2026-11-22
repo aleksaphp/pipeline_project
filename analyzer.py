@@ -3,7 +3,7 @@ import os
 from concurrent.futures import ProcessPoolExecutor
 from hashlib import sha256
 from multiprocessing import Process, Queue, Manager
-from queue import Empty
+from queue import Empty, Queue
 from typing import Any
 
 
@@ -32,7 +32,7 @@ def process_single_post(post: dict, q: Queue, counter: Any, lock: Any) -> dict[s
     return post
 
 
-def process_posts(posts: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+def process_posts(posts: list[dict[str, Any]]) -> tuple[Queue, int]:
     with Manager() as manager:
         q = manager.Queue()
         counter = manager.Value('i', 0)
@@ -44,9 +44,13 @@ def process_posts(posts: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], in
         with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
             futures = [executor.submit(process_single_post, post, q, counter, lock) for post in posts]
 
-            results = [f.result() for f in futures]
+            resulted_posts = [f.result() for f in futures]
 
         q.put(None)  # Сигнал монитору, что все посты обработаны
         monitor.join()
 
-        return results, counter.value
+        threading_Queue = Queue()
+        for post in resulted_posts:
+            threading_Queue.put(post)
+
+        return threading_Queue, counter.value
