@@ -42,7 +42,6 @@ async def fetch_post(
                     )
                 )
             )
-            return None
 
 
 async def fetch_all_posts(posts_amount=100, timeout=10) -> list[dict]:

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import queue
 from time import perf_counter
 
 from analyzer import process_posts
@@ -31,17 +32,18 @@ def create_logger() -> logging.Logger:
 def run_pipeline(logger: logging.Logger, posts_amount=100):
     start = perf_counter()
     downloaded_results = asyncio.run(fetch_all_posts())
-    threading_queue, processed_counter = process_posts(downloaded_results)
-    threading_counter = save_posts(threading_queue, logger)
+    processed_posts = process_posts(downloaded_results)
+    q = queue.Queue()
+    for post in processed_posts:
+        q.put(post)
+    threading_counter = save_posts(q, logger)
 
-    print(f"""
-    === Отчёт о работе пайплайна ===
-    Запрошено постов: {posts_amount}
-    Успешно загружено: {len(downloaded_results)}
-    Успешно обработано (CPU): {processed_counter}
-    Успешно сохранено (I/O): {threading_counter}
-    Общее время: {perf_counter() - start:.2f} сек.
-    """)
+    print("=== Отчёт о работе пайплайна ===")
+    print(f"Запрошено постов: {posts_amount}")
+    print(f"Успешно загружено: {len(downloaded_results)}")
+    print(f"Успешно обработано (CPU): {len(processed_posts)}")
+    print(f"Успешно сохранено (I/O): {threading_counter}")
+    print(f"Общее время: {perf_counter() - start:.2f} сек.")
 
 
 if __name__ == "__main__":

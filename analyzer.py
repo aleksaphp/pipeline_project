@@ -1,61 +1,72 @@
+import logging
 import math
 import multiprocessing as mp
+import multiprocessing.sharedctypes as mp_shared
+import multiprocessing.synchronize as mp_sync
 import os
-import queue
 from concurrent.futures import ProcessPoolExecutor
 from hashlib import sha256
 from typing import Any
 
+worker_lock = None
+worker_counter = None
 
-def monitor_process(q: queue.Queue):
+
+def init_worker(counter: mp_shared.Synchronized[int], lock: mp_sync.Lock):
+    global worker_counter, worker_lock
+    worker_counter = counter
+    worker_lock = lock
+
+
+def monitor_process(q: mp.Queue):
     while True:
-        try:
-            post_id = q.get(timeout=0.1)
-            if post_id is None:
-                break
-            print(f"[Monitor] Пост {post_id} обработан.")
-        except queue.Empty:
-            continue
+        post_id = q.get()  # без timeout
+        if post_id is None:
+            break
+        print(f"[Monitor] Пост {post_id} обработан.")
 
 
-def process_single_post(
-    post: dict, q: mp.Queue, counter: Any, lock: Any
-) -> dict[str, Any]:
-    complexity_score = sum(math.sin(i) for i in range(1_000_000)) * len(post["body"])
-    text_hash = sha256((post["title"] + post["body"]).encode("utf-8")).hexdigest()
+def process_single_post(post: dict) -> dict[str, Any] | None:
+    try:
+        complexity_score = sum(math.sin(i) for i in range(1_000_000)) * len(
+            post["body"]
+        )
+        text_hash = sha256((post["title"] + post["body"]).encode("utf-8")).hexdigest()
 
-    post["complexity_score"] = complexity_score
-    post["text_hash"] = text_hash
+        post["complexity_score"] = complexity_score
+        post["text_hash"] = text_hash
 
-    q.put(post["id"])
+        with worker_lock:  # type: ignore[union-attr]
+            worker_counter.value += 1  # type: ignore[union-attr]
+        return post
+    except (KeyError, TypeError):
+        logger = logging.getLogger("app")
+        logger.exception(f"Не удалось обработать пост {post['id']}")
 
-    with lock:
-        counter.value += 1
-    return post
 
+def process_posts(posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    q = mp.Queue()
+    counter = mp.Value("i", 0)
+    lock = mp.Lock()
 
-def process_posts(posts: list[dict[str, Any]]) -> tuple[queue.Queue, int]:
-    with mp.Manager() as manager:
-        q = manager.Queue()
-        counter = manager.Value("i", 0)
-        lock = manager.Lock()
-
-        monitor = mp.Process(target=monitor_process, args=(q,))
-        monitor.start()
-
-        with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
-            futures = [
-                executor.submit(process_single_post, post, q, counter, lock)
-                for post in posts
-            ]
-
-            resulted_posts = [f.result() for f in futures]
-
+    monitor = mp.Process(target=monitor_process, args=(q,))
+    monitor.start()
+    try:
+        with ProcessPoolExecutor(
+            max_workers=os.cpu_count(),
+            initializer=init_worker,
+            initargs=(counter, lock),
+        ) as executor:
+            futures = [executor.submit(process_single_post, post) for post in posts]
+            resulted_posts = []
+            for f in futures:
+                resulted_post = f.result()
+                if resulted_post is not None:
+                    resulted_posts.append(resulted_post)
+                    q.put(resulted_post["id"])
+    finally:
         q.put(None)  # Сигнал монитору, что все посты обработаны
+        q.close()
         monitor.join()
 
-        threading_Queue = queue.Queue()
-        for post in resulted_posts:
-            threading_Queue.put(post)
-
-        return threading_Queue, counter.value
+    return resulted_posts
