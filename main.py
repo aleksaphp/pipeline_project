@@ -30,7 +30,7 @@ def create_logger() -> logging.Logger:
 
 def run_pipeline(logger: logging.Logger, posts_amount=100):
     start = perf_counter()
-    downloaded_results = asyncio.run(fetch_all_posts(logger, posts_amount))
+    downloaded_results = asyncio.run(fetch_all_posts())
     threading_queue, processed_counter = process_posts(downloaded_results)
     threading_counter = save_posts(threading_queue, logger)
 
