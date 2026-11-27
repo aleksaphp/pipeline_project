@@ -11,26 +11,25 @@ def create_logger() -> logging.Logger:
     logger = logging.getLogger("app")
     logger.setLevel(logging.INFO)
 
-    file_handler = logging.FileHandler(
-        filename="results.log",
-        mode="a",
-        encoding="utf-8",
+    if getattr(logger, "_app_configured", False):
+        return logger
+
+    fh = logging.FileHandler("results.log", mode="a", encoding="utf-8")
+    fh.setFormatter(
+        logging.Formatter(
+            fmt="%(asctime)s | %(levelname)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
     )
+    logger.addHandler(fh)
+    logger.propagate = False
 
-    formatter = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    file_handler.setFormatter(formatter)
-
-    logger.addHandler(file_handler)
-
+    logger._app_configured = True  # маркер, что logger создан
     return logger
 
 
-def run_pipeline(posts_amount=100):
+def run_pipeline(logger: logging.Logger, posts_amount=100):
     start = perf_counter()
-    logger = create_logger()
     downloaded_results = asyncio.run(fetch_all_posts(logger, posts_amount))
     threading_queue, processed_counter = process_posts(downloaded_results)
     threading_counter = save_posts(threading_queue, logger)
@@ -46,4 +45,5 @@ def run_pipeline(posts_amount=100):
 
 
 if __name__ == "__main__":
-    run_pipeline()
+    logger = create_logger()
+    run_pipeline(logger)
