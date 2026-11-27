@@ -36,7 +36,7 @@ def run_pipeline(logger: logging.Logger, posts_amount=100):
     q = queue.Queue()
     for post in processed_posts:
         q.put(post)
-    threading_counter = save_posts(q, logger)
+    threading_counter = save_posts(q)
 
     print("=== Отчёт о работе пайплайна ===")
     print(f"Запрошено постов: {posts_amount}")
