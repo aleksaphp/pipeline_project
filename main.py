@@ -45,5 +45,5 @@ def run_pipeline(posts_amount=100):
     """)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run_pipeline()
